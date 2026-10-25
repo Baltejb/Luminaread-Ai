@@ -35,6 +35,10 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
+  # LuminaRead-specific:
+  http: ^1.2.2 # talks to the FastAPI backend (/pdf/inspect, /translate)
+  file_picker: ^8.1.6 # lets the user pick a PDF from device/web storage
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
