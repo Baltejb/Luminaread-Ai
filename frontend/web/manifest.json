@@ -1,6 +1,6 @@
 {
-    "name": "luminaread_frontend",
-    "short_name": "luminaread_frontend",
+    "name": "luminaread_ai",
+    "short_name": "luminaread_ai",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
