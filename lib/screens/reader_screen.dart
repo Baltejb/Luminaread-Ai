@@ -5,6 +5,18 @@ import '../services/library_service.dart';
 import '../theme/app_theme.dart';
 import 'thumbnail_grid_screen.dart';
 
+/// Page aspect ratio (width / height) with guards against degenerate or
+/// non-finite dimensions. A non-finite ratio makes [AspectRatio] lay out a
+/// zero-size box, which paints nothing at all -- a silently blank page area
+/// with no error and no broken-image icon. Any bad value falls back to a
+/// readable 3:4 page.
+double _pageAspectRatio(double width, double height) {
+  if (!width.isFinite || !height.isFinite || width <= 0 || height <= 0) return 0.75;
+  final ratio = width / height;
+  if (!ratio.isFinite || ratio <= 0) return 0.75;
+  return ratio;
+}
+
 class ReaderScreen extends StatefulWidget {
   const ReaderScreen({
     super.key,
@@ -110,13 +122,20 @@ class _ReaderScreenState extends State<ReaderScreen> {
               top: false,
               child: Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Slider(
-                  value: _currentPage.toDouble().clamp(0.0, _maxPageIndex.toDouble()).toDouble(),
-                  min: 0,
-                  max: _maxPageIndex.toDouble(),
-                  divisions: _maxPageIndex > 0 ? _maxPageIndex : null,
-                  label: '${_currentPage + 1}',
-                  onChanged: (v) => _goToPage(v.round()),
+                // The Slider expands to whatever height it is given; inside
+                // Scaffold.bottomNavigationBar that meant it consumed the
+                // whole screen, starving the body of height and leaving the
+                // page area completely blank. Pin it to its intended height.
+                child: SizedBox(
+                  height: 48,
+                  child: Slider(
+                    value: _currentPage.toDouble().clamp(0.0, _maxPageIndex.toDouble()).toDouble(),
+                    min: 0,
+                    max: _maxPageIndex.toDouble(),
+                    divisions: _maxPageIndex > 0 ? _maxPageIndex : null,
+                    label: '${_currentPage + 1}',
+                    onChanged: (v) => _goToPage(v.round()),
+                  ),
                 ),
               ),
             )
@@ -133,18 +152,10 @@ class _TranslatedPageView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final aspectRatio = page.width > 0 && page.height > 0 ? page.width / page.height : 0.75;
+    final aspectRatio = _pageAspectRatio(page.width, page.height);
 
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.all(8),
-          child: Text(
-            'DEBUG w=${page.width} h=${page.height} ratio=${aspectRatio.toStringAsFixed(3)} '
-            'bytes=${page.imageBytes?.length} spans=${page.spans.length}',
-            style: const TextStyle(color: Colors.yellow, fontSize: 11),
-          ),
-        ),
         Expanded(
           child: Padding(
             padding: const EdgeInsets.all(16),
@@ -183,7 +194,7 @@ class ZoomPageScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final aspectRatio = page.width > 0 && page.height > 0 ? page.width / page.height : 0.75;
+    final aspectRatio = _pageAspectRatio(page.width, page.height);
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
