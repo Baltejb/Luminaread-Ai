@@ -48,3 +48,10 @@ def test_translate_offline_roundtrip():
     page = body["pages"][0]
     assert page["image_png_base64"]
     assert page["spans"][0]["text"]
+
+
+def test_cover_returns_first_page_image():
+    resp = client.post("/pdf/cover", files={"file": ("book.pdf", _one_page_pdf(), "application/pdf")})
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["image_png_base64"]

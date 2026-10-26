@@ -63,3 +63,11 @@ def test_build_translated_pages_without_render_images_skips_png():
         render_images=False,
     )
     assert pages[0].image_png_base64 is None
+
+
+def test_render_cover_png_returns_first_page_image():
+    from app.pdf_tools import render_cover_png
+
+    content = _one_page_pdf()
+    png_bytes = render_cover_png(content, zoom=1.0)
+    assert png_bytes[:8] == b"\x89PNG\r\n\x1a\n"

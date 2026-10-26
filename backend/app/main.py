@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+import base64
 from typing import Optional
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
-from .pdf_tools import build_translated_pages, inspect_pdf
+from .pdf_tools import build_translated_pages, inspect_pdf, render_cover_png
 from .translators import translate_pages
 
 app = FastAPI(title="LuminaRead API", version="0.2.0")
@@ -26,6 +27,20 @@ def _require_pdf(content: bytes) -> None:
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.post("/pdf/cover")
+async def cover(file: UploadFile = File(...), zoom: float = Form(1.0)):
+    """Lightweight: render just the first page as a PNG -- no text
+    extraction, no translation. The client uses this to extract a "pixel
+    color" accent from the book's cover before translating it."""
+    content = await file.read()
+    _require_pdf(content)
+    try:
+        png_bytes = render_cover_png(content, zoom=zoom)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=400, detail="Could not read the PDF.") from exc
+    return {"image_png_base64": base64.b64encode(png_bytes).decode("ascii")}
 
 
 @app.post("/pdf/inspect")

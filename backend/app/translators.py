@@ -62,7 +62,7 @@ async def _gemini_translate(
 ) -> List[str]:
     if not api_key:
         raise TranslationError("Gemini translation needs an API key.")
-    model = "gemini-2.5-flash"
+    model = "gemini-3.8-flash"
     url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
     prompt = _JSON_ARRAY_SYSTEM_PROMPT.format(target=target_lang, source=source_lang or "auto-detect")
     body = {
@@ -171,7 +171,8 @@ async def translate_pages(
                 source_lang=source_lang,
                 api_key=api_key,
             )
-        except TranslationError:
+        except TranslationError as exc:
+            print(f"[translate_pages] provider={provider!r} failed, falling back to original: {exc}")
             translated = list(texts)
         results.append(translated)
     return results

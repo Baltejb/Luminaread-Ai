@@ -73,6 +73,22 @@ def render_page_png(page: "fitz.Page", zoom: float = 2.0) -> bytes:
     return pixmap.tobytes("png")
 
 
+def render_cover_png(content: bytes, zoom: float = 1.0) -> bytes:
+    """Render just the first page, as a lightweight preview.
+
+    Used to theme the picker UI (extract a "pixel color" accent from the
+    book's cover) before any translation work happens -- no text extraction,
+    no redaction, just one page rasterised.
+    """
+    document = fitz.open(stream=content, filetype="pdf")
+    try:
+        if document.page_count == 0:
+            raise ValueError("PDF has no pages.")
+        return render_page_png(document[0], zoom=zoom)
+    finally:
+        document.close()
+
+
 def inspect_pdf(content: bytes) -> List[PageData]:
     document = fitz.open(stream=content, filetype="pdf")
     try:
