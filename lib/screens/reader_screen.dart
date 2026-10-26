@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:printing/printing.dart';
 
 import '../models/translation_models.dart';
 import '../services/library_service.dart';
+import '../services/pdf_export_service.dart';
 import '../theme/app_theme.dart';
 import 'thumbnail_grid_screen.dart';
 
@@ -40,6 +42,7 @@ class _ReaderScreenState extends State<ReaderScreen> {
   late final PageController _pageController =
       PageController(initialPage: widget.initialPage.clamp(0, _maxPageIndex).toInt());
   late int _currentPage = widget.initialPage.clamp(0, _maxPageIndex).toInt();
+  bool _exporting = false;
 
   @override
   void dispose() {
@@ -74,6 +77,29 @@ class _ReaderScreenState extends State<ReaderScreen> {
     );
   }
 
+  /// Assemble the already-rendered page images into a single PDF and hand it
+  /// to the platform share/download flow.
+  Future<void> _exportPdf() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
+    final fileName = PdfExportService.exportFileName(widget.sourceFileName);
+    try {
+      final bytes = await PdfExportService.buildPdf(widget.result, title: widget.sourceFileName);
+      final shared = await Printing.sharePdf(bytes: bytes, filename: fileName);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(shared ? 'Saved $fileName' : 'PDF export was cancelled.')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not export the PDF: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = widget.result.pages;
@@ -86,6 +112,18 @@ class _ReaderScreenState extends State<ReaderScreen> {
           style: const TextStyle(fontSize: 16),
         ),
         actions: [
+          if (pages.isNotEmpty)
+            IconButton(
+              icon: _exporting
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    )
+                  : const Icon(Icons.picture_as_pdf_outlined),
+              tooltip: 'Download as PDF',
+              onPressed: _exporting ? null : _exportPdf,
+            ),
           if (pages.length > 1)
             IconButton(
               icon: const Icon(Icons.grid_view_rounded),
