@@ -5,6 +5,9 @@ from typing import Awaitable, Callable, Dict, List, Optional
 
 import httpx
 
+from . import translation_cache
+from .translation_cache import CacheStats
+
 TIMEOUT = httpx.Timeout(60.0, connect=10.0)
 
 
@@ -147,17 +150,49 @@ async def translate_texts(
     target_lang: str,
     source_lang: str = "auto",
     api_key: Optional[str] = None,
+    stats: Optional[CacheStats] = None,
 ) -> List[str]:
     if not texts:
         return []
     fn = _PROVIDERS.get(provider)
     if fn is None:
         raise TranslationError(f"Unknown provider '{provider}'. Choose one of: {', '.join(_PROVIDERS)}.")
-    try:
-        return await fn(texts, target_lang=target_lang, source_lang=source_lang, api_key=api_key)
-    except httpx.HTTPError as exc:
-        # Network-level failure (DNS, timeout, refused connection).
-        raise TranslationError(f"{provider} request failed: {exc}") from exc
+
+    # Per-text cache lookup: only the blocks we have never seen before are
+    # sent to the provider.
+    results: List[Optional[str]] = [None] * len(texts)
+    miss_positions: List[int] = []
+    for position, text in enumerate(texts):
+        cached = translation_cache.get(_cache_key(provider, target_lang, text))
+        if cached is None:
+            miss_positions.append(position)
+            if stats is not None:
+                stats.misses += 1
+        else:
+            results[position] = cached
+            if stats is not None:
+                stats.hits += 1
+
+    if miss_positions:
+        miss_texts = [texts[position] for position in miss_positions]
+        if stats is not None:
+            stats.provider_calls += 1
+        try:
+            translated = await fn(
+                miss_texts, target_lang=target_lang, source_lang=source_lang, api_key=api_key
+            )
+        except httpx.HTTPError as exc:
+            # Network-level failure (DNS, timeout, refused connection).
+            raise TranslationError(f"{provider} request failed: {exc}") from exc
+        for position, value in zip(miss_positions, translated):
+            results[position] = value
+            translation_cache.set(_cache_key(provider, target_lang, texts[position]), value)
+
+    return [value if value is not None else "" for value in results]
+
+
+def _cache_key(provider: str, target_lang: str, text: str) -> str:
+    return translation_cache.cache_key(provider, target_lang, text)
 
 
 async def translate_pages(
@@ -167,6 +202,7 @@ async def translate_pages(
     target_lang: str,
     source_lang: str = "auto",
     api_key: Optional[str] = None,
+    stats: Optional[CacheStats] = None,
 ) -> List[List[str]]:
     # A provider failure is raised to the caller (the API turns it into a 502)
     # rather than silently returning the original, untranslated text.
@@ -179,6 +215,7 @@ async def translate_pages(
                 target_lang=target_lang,
                 source_lang=source_lang,
                 api_key=api_key,
+                stats=stats,
             )
         )
     return results
