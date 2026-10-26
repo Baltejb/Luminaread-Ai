@@ -5,6 +5,7 @@ import 'package:palette_generator/palette_generator.dart';
 import '../models/translation_models.dart';
 import '../services/api_service.dart';
 import '../services/library_service.dart';
+import '../services/usage_service.dart';
 import '../theme/app_theme.dart';
 import '../theme/theme_controller.dart';
 import '../widgets/glass_card.dart';
@@ -113,6 +114,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final translated = result;
     if (translated == null || !mounted) return;
 
+    // App-side usage counter: counts this call and the characters it
+    // handled, per provider/key. Best-effort estimate, never a provider
+    // quota query.
+    await UsageService.record(
+      provider: _provider.apiValue,
+      apiKey: _apiKeyController.text.trim().isEmpty ? null : _apiKeyController.text.trim(),
+      characters: UsageService.estimateCharacters(translated),
+    );
+    if (!mounted) return;
+
     final entry = LibraryEntry(
       id: '${DateTime.now().millisecondsSinceEpoch}_${file.name}',
       title: file.name,
@@ -162,6 +173,78 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _deleteFromLibrary(LibraryEntry entry) async {
     await LibraryService.remove(entry.id);
     _reloadLibrary();
+  }
+
+  /// Shows the app-tracked usage counter. Providers do not expose reliable
+  /// quota for BYOK keys, so this only reports what this device counted.
+  Future<void> _showUsage() async {
+    final usage = await UsageService.load();
+    if (!mounted) return;
+    final entries = usage.entries.toList()
+      ..sort((a, b) => b.value.characters.compareTo(a.value.characters));
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: const Text('Translation usage'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'App-tracked estimate counted on this device. It is not your provider\'s '
+                'account quota or balance.',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 12, height: 1.4),
+              ),
+              const SizedBox(height: 14),
+              if (entries.isEmpty)
+                const Text('No translations yet.', style: TextStyle(color: AppColors.textSecondary))
+              else
+                for (final item in entries)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          item.key,
+                          style: const TextStyle(
+                            color: AppColors.textPrimary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${item.value.calls} translate call${item.value.calls == 1 ? '' : 's'} '
+                          '-- ~${item.value.characters} characters',
+                          style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                        ),
+                      ],
+                    ),
+                  ),
+            ],
+          ),
+        ),
+        actions: [
+          if (entries.isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+                await UsageService.reset();
+                if (mounted) await _showUsage();
+              },
+              child: const Text('Reset'),
+            ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -254,6 +337,24 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ),
                           ],
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              const Flexible(
+                                child: Text(
+                                  'Usage is an estimate tracked by this app',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(color: AppColors.textSecondary, fontSize: 12),
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: _showUsage,
+                                icon: const Icon(Icons.bar_chart, size: 18),
+                                label: const Text('Usage'),
+                              ),
+                            ],
+                          ),
                           const SizedBox(height: 22),
                           if (_error != null) ...[
                             Text(_error!, style: const TextStyle(color: AppColors.danger)),
