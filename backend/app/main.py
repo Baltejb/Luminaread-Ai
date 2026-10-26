@@ -7,7 +7,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 
 from .pdf_tools import build_translated_pages, inspect_pdf, render_cover_png
-from .translators import translate_pages
+from .translators import TranslationError, translate_pages
 
 app = FastAPI(title="LuminaRead API", version="0.2.0")
 
@@ -73,13 +73,16 @@ async def translate(
         raise HTTPException(status_code=400, detail="Could not read the PDF.") from exc
 
     texts_by_page = [[s.text for s in page.spans] for page in structure]
-    translated_by_page = await translate_pages(
-        texts_by_page,
-        provider=provider,
-        target_lang=target_lang,
-        source_lang=source_lang,
-        api_key=api_key,
-    )
+    try:
+        translated_by_page = await translate_pages(
+            texts_by_page,
+            provider=provider,
+            target_lang=target_lang,
+            source_lang=source_lang,
+            api_key=api_key,
+        )
+    except TranslationError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
 
     pages = build_translated_pages(
         content,

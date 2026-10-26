@@ -1,9 +1,8 @@
---extra-index-url https://download.pytorch.org/whl/cpu
-
 fastapi
 uvicorn
 pymupdf
-openai
-sentence-transformers
-faiss-cpu
-torch==2.14.1+cpu
+httpx
+
+# test dependencies
+pytest
+pytest-asyncio

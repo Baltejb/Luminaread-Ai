@@ -26,7 +26,10 @@ async def _deepl_translate(
 ) -> List[str]:
     if not api_key:
         raise TranslationError("DeepL translation needs an API key.")
-    url = "https://api-free.deepl.com/v2/translate"
+    # Free keys end with ":fx" and only work on the api-free host; Pro keys
+    # must use api.deepl.com.
+    host = "api-free.deepl.com" if api_key.endswith(":fx") else "api.deepl.com"
+    url = f"https://{host}/v2/translate"
     data = [("target_lang", target_lang.upper())]
     if source_lang and source_lang.lower() != "auto":
         data.append(("source_lang", source_lang.upper()))
@@ -150,7 +153,11 @@ async def translate_texts(
     fn = _PROVIDERS.get(provider)
     if fn is None:
         raise TranslationError(f"Unknown provider '{provider}'. Choose one of: {', '.join(_PROVIDERS)}.")
-    return await fn(texts, target_lang=target_lang, source_lang=source_lang, api_key=api_key)
+    try:
+        return await fn(texts, target_lang=target_lang, source_lang=source_lang, api_key=api_key)
+    except httpx.HTTPError as exc:
+        # Network-level failure (DNS, timeout, refused connection).
+        raise TranslationError(f"{provider} request failed: {exc}") from exc
 
 
 async def translate_pages(
@@ -161,18 +168,17 @@ async def translate_pages(
     source_lang: str = "auto",
     api_key: Optional[str] = None,
 ) -> List[List[str]]:
+    # A provider failure is raised to the caller (the API turns it into a 502)
+    # rather than silently returning the original, untranslated text.
     results: List[List[str]] = []
     for texts in spans_by_page:
-        try:
-            translated = await translate_texts(
+        results.append(
+            await translate_texts(
                 texts,
                 provider=provider,
                 target_lang=target_lang,
                 source_lang=source_lang,
                 api_key=api_key,
             )
-        except TranslationError as exc:
-            print(f"[translate_pages] provider={provider!r} failed, falling back to original: {exc}")
-            translated = list(texts)
-        results.append(translated)
+        )
     return results

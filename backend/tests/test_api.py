@@ -50,6 +50,17 @@ def test_translate_offline_roundtrip():
     assert page["spans"][0]["text"]
 
 
+def test_translate_reports_provider_failure_instead_of_silent_fallback():
+    resp = client.post(
+        "/translate",
+        files={"file": ("book.pdf", _one_page_pdf(), "application/pdf")},
+        data={"target_lang": "pa", "provider": "gemini", "api_key": ""},
+    )
+    assert resp.status_code == 502
+    detail = resp.json()["detail"]
+    assert "API key" in detail
+
+
 def test_cover_returns_first_page_image():
     resp = client.post("/pdf/cover", files={"file": ("book.pdf", _one_page_pdf(), "application/pdf")})
     assert resp.status_code == 200
